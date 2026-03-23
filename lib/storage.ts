@@ -95,6 +95,16 @@ export async function setSession(state: SessionState): Promise<void> {
   }
 }
 
+export async function clearAllSubmissions(): Promise<void> {
+  if (isKVAvailable()) {
+    const kv = await getKV();
+    await Promise.all([kv.del('submissions'), kv.del('session')]);
+  } else {
+    memStore.submissions = {};
+    memStore.session = { status: 'open' };
+  }
+}
+
 // ── Allocation algorithm ──────────────────────────────────────────────────────
 
 export function computeEvenAllocation(

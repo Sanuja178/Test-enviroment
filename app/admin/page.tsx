@@ -23,6 +23,8 @@ export default function AdminPage({
   const [error, setError] = useState('');
   const [allocating, setAllocating] = useState(false);
   const [allocateMsg, setAllocateMsg] = useState('');
+  const [clearing, setClearing] = useState(false);
+  const [clearMsg, setClearMsg] = useState('');
 
   const load = useCallback(async (k: string) => {
     setError('');
@@ -47,8 +49,11 @@ export default function AdminPage({
     return () => clearInterval(interval);
   }, [key, load]);
 
-  async function handleAllocate() {
-    if (!confirm('This will assign everyone to a workshop group with an even split. Continue?')) return;
+  async function handleAllocate(reallocate = false) {
+    const msg = reallocate
+      ? 'This will reassign all groups from scratch. Participants will see the new allocation. Continue?'
+      : 'This will assign everyone to a workshop group with an even split. Continue?';
+    if (!confirm(msg)) return;
     setAllocating(true);
     setAllocateMsg('');
     const res = await fetch('/api/allocate', {
@@ -61,7 +66,26 @@ export default function AdminPage({
     if (!res.ok) {
       setAllocateMsg(`Error: ${json.error}`);
     } else {
-      setAllocateMsg('Groups allocated successfully! Participants will see their groups now.');
+      setAllocateMsg(reallocate ? 'Groups reallocated successfully!' : 'Groups allocated successfully! Participants will see their groups now.');
+      await load(key);
+    }
+  }
+
+  async function handleClear() {
+    if (!confirm('This will permanently delete ALL responses and reset the session. This cannot be undone. Continue?')) return;
+    setClearing(true);
+    setClearMsg('');
+    const res = await fetch('/api/responses', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    const json = await res.json();
+    setClearing(false);
+    if (!res.ok) {
+      setClearMsg(`Error: ${json.error}`);
+    } else {
+      setClearMsg('All responses cleared.');
       await load(key);
     }
   }
@@ -177,10 +201,22 @@ export default function AdminPage({
         {session.status === 'allocated' && (
           <div className="bg-green-900 border border-green-700 rounded-2xl p-6 mb-6">
             <h2 className="text-lg font-bold text-green-300 mb-2">✅ Groups Allocated</h2>
-            <p className="text-green-200 text-sm">
+            <p className="text-green-200 text-sm mb-4">
               Participants can now see their workshop group on their result page.
               Allocated at: {session.allocatedAt ? new Date(session.allocatedAt).toLocaleString() : 'unknown'}
             </p>
+            {allocateMsg && (
+              <div className={`rounded-xl p-3 text-sm mb-4 ${allocateMsg.startsWith('Error') ? 'bg-red-900 text-red-200' : 'bg-green-800 text-green-100'}`}>
+                {allocateMsg}
+              </div>
+            )}
+            <button
+              onClick={() => handleAllocate(true)}
+              disabled={allocating || total === 0}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed font-bold px-6 py-3 rounded-xl transition-colors"
+            >
+              {allocating ? '⏳ Reallocating…' : '🔄 Reallocate Groups'}
+            </button>
           </div>
         )}
 
@@ -214,6 +250,27 @@ export default function AdminPage({
             })}
           </div>
         )}
+
+        {/* Danger zone */}
+        <div className="bg-gray-800 border border-red-900 rounded-2xl p-6 mb-6">
+          <h2 className="text-lg font-bold text-red-400 mb-2">⚠ Danger Zone</h2>
+          <p className="text-gray-400 text-sm mb-4">
+            Permanently delete all responses and reset the session back to open. This cannot be undone.
+          </p>
+          {clearMsg && (
+            <div className={`rounded-xl p-3 text-sm mb-4 ${clearMsg.startsWith('Error') ? 'bg-red-900 text-red-200' : 'bg-gray-700 text-gray-200'}`}>
+              {clearMsg}
+            </div>
+          )}
+          <button
+            onClick={handleClear}
+            disabled={clearing || total === 0}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed font-bold px-6 py-3 rounded-xl transition-colors"
+          >
+            {clearing ? '⏳ Clearing…' : '🗑 Clear All Responses'}
+          </button>
+          {total === 0 && <p className="text-gray-500 text-xs mt-2">No responses to clear.</p>}
+        </div>
 
         {/* Submissions table */}
         <div className="bg-gray-800 rounded-2xl overflow-hidden">

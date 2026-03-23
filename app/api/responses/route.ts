@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllSubmissions, getSession } from '@/lib/storage';
+import { getAllSubmissions, getSession, clearAllSubmissions } from '@/lib/storage';
 import { ARCHETYPE_KEYS, ArchetypeKey } from '@/lib/archetypes';
 
 export async function GET(req: NextRequest) {
@@ -28,4 +28,14 @@ export async function GET(req: NextRequest) {
     stats,
     submissions,
   });
+}
+
+export async function DELETE(req: NextRequest) {
+  const adminPassword = process.env.ADMIN_PASSWORD ?? 'sesame';
+  const body = await req.json().catch(() => ({}));
+  if (body.key !== adminPassword) {
+    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
+  }
+  await clearAllSubmissions();
+  return NextResponse.json({ success: true });
 }
