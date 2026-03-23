@@ -108,27 +108,30 @@ export async function clearAllSubmissions(): Promise<void> {
 // ── Allocation algorithm ──────────────────────────────────────────────────────
 
 export function computeEvenAllocation(
-  submissions: Submission[]
+  submissions: Submission[],
+  disabled: ArchetypeKey[] = []
 ): Record<string, ArchetypeKey> {
   const n = submissions.length;
   if (n === 0) return {};
 
-  const numChars = ARCHETYPE_KEYS.length; // 5
-  const base = Math.floor(n / numChars);
-  const extra = n % numChars;
+  const activeKeys = ARCHETYPE_KEYS.filter((k) => !disabled.includes(k));
+  if (activeKeys.length === 0) return {};
 
-  // Characters sorted by how many people naturally chose them (ascending)
-  // so over-represented characters are more likely to give up extras.
+  const base = Math.floor(n / activeKeys.length);
+  const extra = n % activeKeys.length;
+
   const naturalCounts: Record<ArchetypeKey, number> = {
     elmo: 0, bigbird: 0, bert: 0, cookie: 0, oscar: 0,
   };
   for (const s of submissions) naturalCounts[s.archetype]++;
 
-  // Quota: first `extra` characters (by natural popularity desc) get base+1
-  const sortedByPopularity = [...ARCHETYPE_KEYS].sort(
+  // Quota: only active keys get slots; disabled keys stay at 0
+  const quotas: Record<ArchetypeKey, number> = {
+    elmo: 0, bigbird: 0, bert: 0, cookie: 0, oscar: 0,
+  };
+  const sortedByPopularity = [...activeKeys].sort(
     (a, b) => naturalCounts[b] - naturalCounts[a]
   );
-  const quotas: Record<ArchetypeKey, number> = {} as Record<ArchetypeKey, number>;
   sortedByPopularity.forEach((k, i) => {
     quotas[k] = base + (i < extra ? 1 : 0);
   });
@@ -139,9 +142,9 @@ export function computeEvenAllocation(
   };
   const unassigned: Submission[] = [];
 
-  // First pass: give everyone their natural archetype if quota allows
+  // First pass: give everyone their natural archetype if it's active and has quota
   for (const sub of submissions) {
-    if (used[sub.archetype] < quotas[sub.archetype]) {
+    if (!disabled.includes(sub.archetype) && used[sub.archetype] < quotas[sub.archetype]) {
       allocation[sub.id] = sub.archetype;
       used[sub.archetype]++;
     } else {
@@ -149,9 +152,9 @@ export function computeEvenAllocation(
     }
   }
 
-  // Second pass: assign remaining by best secondary score
+  // Second pass: assign unassigned by best secondary score among active keys
   for (const sub of unassigned) {
-    const ranked = [...ARCHETYPE_KEYS].sort(
+    const ranked = [...activeKeys].sort(
       (a, b) => sub.scores[b] - sub.scores[a]
     );
     for (const char of ranked) {

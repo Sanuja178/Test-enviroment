@@ -25,6 +25,13 @@ export default function AdminPage({
   const [allocateMsg, setAllocateMsg] = useState('');
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState('');
+  const [disabledKeys, setDisabledKeys] = useState<ArchetypeKey[]>([]);
+
+  function toggleDisabled(k: ArchetypeKey) {
+    setDisabledKeys((prev) =>
+      prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]
+    );
+  }
 
   const load = useCallback(async (k: string) => {
     setError('');
@@ -59,7 +66,7 @@ export default function AdminPage({
     const res = await fetch('/api/allocate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, disabled: disabledKeys }),
     });
     const json = await res.json();
     setAllocating(false);
@@ -172,12 +179,46 @@ export default function AdminPage({
         </div>
 
         {/* What happens after allocation */}
+        {/* Character group toggles — shared between allocate & reallocate */}
+        <div className="bg-gray-800 rounded-2xl p-5 mb-6 border border-gray-700">
+          <h2 className="text-sm font-bold text-gray-300 mb-1">Group split settings</h2>
+          <p className="text-gray-500 text-xs mb-3">
+            Disable a character to exclude them from the auto-split. Disabled groups stay empty so you can fill them manually.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ARCHETYPE_KEYS.map((k) => {
+              const a = ARCHETYPES[k];
+              const off = disabledKeys.includes(k);
+              return (
+                <button
+                  key={k}
+                  onClick={() => toggleDisabled(k)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
+                    off
+                      ? 'bg-gray-700 border-gray-600 text-gray-500 line-through'
+                      : 'bg-gray-900 border-orange-500 text-white'
+                  }`}
+                >
+                  <span>{a.emoji}</span>
+                  <span>{a.character}</span>
+                  {off ? <span className="text-xs text-gray-600">off</span> : <span className="text-xs text-green-400">on</span>}
+                </button>
+              );
+            })}
+          </div>
+          {disabledKeys.length > 0 && (
+            <p className="text-yellow-400 text-xs mt-3">
+              ⚠ {disabledKeys.length} character{disabledKeys.length > 1 ? 's' : ''} disabled — everyone will be split across the remaining {ARCHETYPE_KEYS.length - disabledKeys.length} group{ARCHETYPE_KEYS.length - disabledKeys.length !== 1 ? 's' : ''}.
+            </p>
+          )}
+        </div>
+
         {session.status === 'open' && (
           <div className="bg-gray-800 rounded-2xl p-6 mb-6 border border-gray-700">
             <h2 className="text-lg font-bold mb-2">📊 When you&apos;re ready…</h2>
             <p className="text-gray-400 text-sm mb-4">
               Once everyone has completed the survey, press <strong className="text-white">Allocate Workshop Groups</strong>.
-              The algorithm will ensure an even split across all 5 characters, honouring
+              The algorithm will ensure an even split across all active characters, honouring
               natural archetypes where possible. Each participant&apos;s result page will update instantly.
             </p>
             {allocateMsg && (
@@ -186,14 +227,17 @@ export default function AdminPage({
               </div>
             )}
             <button
-              onClick={handleAllocate}
-              disabled={allocating || total === 0}
+              onClick={() => handleAllocate(false)}
+              disabled={allocating || total === 0 || disabledKeys.length === ARCHETYPE_KEYS.length}
               className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed font-bold px-6 py-3 rounded-xl transition-colors"
             >
               {allocating ? '⏳ Allocating…' : '▶ Allocate Workshop Groups'}
             </button>
             {total === 0 && (
               <p className="text-gray-500 text-xs mt-2">Waiting for at least one response first.</p>
+            )}
+            {disabledKeys.length === ARCHETYPE_KEYS.length && (
+              <p className="text-red-400 text-xs mt-2">Enable at least one character to allocate.</p>
             )}
           </div>
         )}
@@ -212,7 +256,7 @@ export default function AdminPage({
             )}
             <button
               onClick={() => handleAllocate(true)}
-              disabled={allocating || total === 0}
+              disabled={allocating || total === 0 || disabledKeys.length === ARCHETYPE_KEYS.length}
               className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed font-bold px-6 py-3 rounded-xl transition-colors"
             >
               {allocating ? '⏳ Reallocating…' : '🔄 Reallocate Groups'}

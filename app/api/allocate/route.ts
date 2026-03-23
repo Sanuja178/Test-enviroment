@@ -5,6 +5,7 @@ import {
   updateSubmission,
   computeEvenAllocation,
 } from '@/lib/storage';
+import { ArchetypeKey, ARCHETYPE_KEYS } from '@/lib/archetypes';
 
 export async function POST(req: NextRequest) {
   const adminPassword = process.env.ADMIN_PASSWORD ?? 'sesame';
@@ -13,8 +14,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
   }
 
+  const disabled: ArchetypeKey[] = Array.isArray(body.disabled)
+    ? body.disabled.filter((k: unknown) => ARCHETYPE_KEYS.includes(k as ArchetypeKey))
+    : [];
+
   const submissions = await getAllSubmissions();
-  const allocation = computeEvenAllocation(submissions);
+  const allocation = computeEvenAllocation(submissions, disabled);
 
   // Persist allocation to each submission
   await Promise.all(
