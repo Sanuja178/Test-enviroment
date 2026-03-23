@@ -24,22 +24,42 @@ export async function POST(req: NextRequest) {
     ? body.groups.map(String).filter(Boolean)
     : [];
 
+  const coFacilitatorGroup: string =
+    typeof body.coFacilitatorGroup === 'string' ? body.coFacilitatorGroup.trim() : '';
+
   const submissions = await getAllSubmissions();
   const hasFacilitatorGroups = submissions.some((s) => s.facilitatorGroup?.trim());
 
   if (hasFacilitatorGroups) {
-    // Facilitator-group mode: even character split independently per group
-    const allocation = computeAllocationsPerGroup(submissions, disabled);
-    await Promise.all(
-      submissions.map((s) =>
-        updateSubmission(s.id, {
-          allocatedCharacter: allocation[s.id],
-          allocatedGroup: undefined,
-        })
-      )
-    );
-    await setSession({ status: 'allocated', allocatedAt: new Date().toISOString() });
-    return NextResponse.json({ success: true, mode: 'facilitator-groups' });
+    // Facilitator-group mode: even character split independently per regular group.
+    // Co-facilitator group members are excluded from automatic allocation so the
+    // admin can manually deploy them into target groups afterwards.
+    const participantSubs = coFacilitatorGroup
+      ? submissions.filter((s) => s.facilitatorGroup?.trim() !== coFacilitatorGroup)
+      : submissions;
+    const coFacSubs = coFacilitatorGroup
+      ? submissions.filter((s) => s.facilitatorGroup?.trim() === coFacilitatorGroup)
+      : [];
+
+    const allocation = computeAllocationsPerGroup(participantSubs, disabled);
+
+    await Promise.all([
+      // Assign characters to regular participants
+      ...participantSubs.map((s) =>
+        updateSubmission(s.id, { allocatedCharacter: allocation[s.id], allocatedGroup: undefined, deployedToGroup: undefined })
+      ),
+      // Clear any previous deployment for co-facilitators (fresh re-allocation)
+      ...coFacSubs.map((s) =>
+        updateSubmission(s.id, { allocatedCharacter: undefined, allocatedGroup: undefined, deployedToGroup: undefined })
+      ),
+    ]);
+
+    await setSession({
+      status: 'allocated',
+      allocatedAt: new Date().toISOString(),
+      coFacilitatorGroup: coFacilitatorGroup || undefined,
+    });
+    return NextResponse.json({ success: true, mode: 'facilitator-groups', coFacilitatorGroup: coFacilitatorGroup || null });
   }
 
   if (groups.length > 0) {
@@ -51,6 +71,7 @@ export async function POST(req: NextRequest) {
         return updateSubmission(s.id, {
           allocatedCharacter: slot?.character,
           allocatedGroup: slot?.group ?? undefined,
+          deployedToGroup: undefined,
         });
       })
     );
@@ -65,6 +86,7 @@ export async function POST(req: NextRequest) {
       updateSubmission(s.id, {
         allocatedCharacter: allocation[s.id],
         allocatedGroup: undefined,
+        deployedToGroup: undefined,
       })
     )
   );

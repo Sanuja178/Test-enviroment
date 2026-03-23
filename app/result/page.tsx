@@ -29,14 +29,15 @@ export default function ResultPage({
       const json: ResultData = await res.json();
       setData(json);
 
-      // If session is still open, keep polling until allocation happens
-      if (json.session.status === 'open') {
+      // Keep polling while no character is assigned yet (covers: session open,
+      // or session allocated but participant is a co-fac awaiting deployment)
+      if (!json.submission.allocatedCharacter) {
         const interval = setInterval(async () => {
           const r = await fetch(`/api/result?id=${id}`);
           if (r.ok) {
             const d: ResultData = await r.json();
             setData(d);
-            if (d.session.status === 'allocated') clearInterval(interval);
+            if (d.submission.allocatedCharacter) clearInterval(interval);
           }
         }, 5000);
         return () => clearInterval(interval);
@@ -165,8 +166,33 @@ export default function ResultPage({
                 </p>
               </div>
             </div>
+          ) : submission.deployedToGroup ? (
+            // Co-facilitator deployed into a target group
+            <div className={`rounded-3xl border-2 p-8 shadow-xl ${allocated.bgColor}`}>
+              <div className="text-center">
+                <p className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-1">
+                  Co-facilitator
+                </p>
+                <p className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Your Workshop Assignment
+                </p>
+                <div className="text-6xl mb-2">{allocated.emoji}</div>
+                <h2 className={`text-2xl font-extrabold ${allocated.color}`}>
+                  {allocated.character}
+                </h2>
+                <p className="text-gray-600 mt-2 font-medium">{allocated.archetype}</p>
+                <div className="mt-3 bg-white bg-opacity-70 rounded-xl px-4 py-2 inline-block">
+                  <p className="text-gray-700 font-semibold text-sm">
+                    Working with Group {submission.deployedToGroup}
+                  </p>
+                </div>
+                <p className="text-gray-500 text-sm mt-2">
+                  Find Group {submission.deployedToGroup} — you&apos;ll be playing {allocated.character} for the next activity!
+                </p>
+              </div>
+            </div>
           ) : (
-            // Character mode: show character group (with optional facilitator group label)
+            // Regular participant: show their character within their facilitator group
             <div className={`rounded-3xl border-2 p-8 shadow-xl ${allocated.bgColor}`}>
               <div className="text-center">
                 {submission.facilitatorGroup && (
@@ -193,11 +219,23 @@ export default function ResultPage({
         ) : (
           <div className="bg-white rounded-2xl shadow p-6 text-center">
             <div className="text-3xl mb-3">⏳</div>
-            <h3 className="font-bold text-gray-700 mb-1">Waiting for the facilitator…</h3>
-            <p className="text-gray-500 text-sm">
-              Once everyone has completed the survey, the facilitator will reveal your workshop group.
-              This page will update automatically.
-            </p>
+            {session.coFacilitatorGroup && submission.facilitatorGroup === session.coFacilitatorGroup ? (
+              <>
+                <h3 className="font-bold text-gray-700 mb-1">You&apos;re a co-facilitator!</h3>
+                <p className="text-gray-500 text-sm">
+                  Your character assignment is coming — the facilitator will deploy you to a group shortly.
+                  This page will update automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="font-bold text-gray-700 mb-1">Waiting for the facilitator…</h3>
+                <p className="text-gray-500 text-sm">
+                  Once everyone has completed the survey, the facilitator will reveal your workshop group.
+                  This page will update automatically.
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>

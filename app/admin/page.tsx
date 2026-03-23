@@ -28,6 +28,11 @@ export default function AdminPage({
   const [disabledKeys, setDisabledKeys] = useState<ArchetypeKey[]>([]);
   const [groupNames, setGroupNames] = useState<string[]>([]);
   const [groupInput, setGroupInput] = useState('');
+  const [coFacilitatorGroup, setCoFacilitatorGroup] = useState('');
+  // Per co-fac member: pending character + target group selection before deploying
+  const [pendingCharacter, setPendingCharacter] = useState<Record<string, ArchetypeKey>>({});
+  const [pendingTarget, setPendingTarget] = useState<Record<string, string>>({});
+  const [deploying, setDeploying] = useState<Record<string, boolean>>({});
   const hasLoadedOnce = useRef(false);
 
   function toggleDisabled(k: ArchetypeKey) {
@@ -57,9 +62,10 @@ export default function AdminPage({
     }
     const json: ResponsesData = await res.json();
     setData(json);
-    // Restore group names from session on first load only
-    if (!hasLoadedOnce.current && json.session.groups?.length) {
-      setGroupNames(json.session.groups);
+    // Restore settings from session on first load only
+    if (!hasLoadedOnce.current) {
+      if (json.session.groups?.length) setGroupNames(json.session.groups);
+      if (json.session.coFacilitatorGroup) setCoFacilitatorGroup(json.session.coFacilitatorGroup);
     }
     hasLoadedOnce.current = true;
   }, []);
@@ -86,7 +92,7 @@ export default function AdminPage({
     const res = await fetch('/api/allocate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, disabled: disabledKeys, groups: groupNames }),
+      body: JSON.stringify({ key, disabled: disabledKeys, groups: groupNames, coFacilitatorGroup: coFacilitatorGroup.trim() || undefined }),
     });
     const json = await res.json();
     setAllocating(false);
@@ -96,6 +102,20 @@ export default function AdminPage({
       setAllocateMsg(reallocate ? 'Groups reallocated successfully!' : 'Groups allocated successfully! Participants will see their groups now.');
       await load(key);
     }
+  }
+
+  async function handleDeploy(submissionId: string) {
+    const character = pendingCharacter[submissionId];
+    const targetGroup = pendingTarget[submissionId];
+    if (!character || !targetGroup) return;
+    setDeploying((d) => ({ ...d, [submissionId]: true }));
+    await fetch('/api/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, submissionId, character, targetGroup }),
+    });
+    setDeploying((d) => ({ ...d, [submissionId]: false }));
+    await load(key);
   }
 
   async function handleClear() {
@@ -251,6 +271,26 @@ export default function AdminPage({
             )}
           </div>
 
+          {/* ── Co-facilitator group ── */}
+          <div className="border-t border-gray-700 pt-4 mb-4">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-1">Co-facilitator group</p>
+            <p className="text-gray-500 text-xs mb-3">
+              Enter the group number of your co-facilitators. They will be excluded from automatic allocation
+              so you can manually assign them to fill missing character slots in other groups.
+            </p>
+            <input
+              value={coFacilitatorGroup}
+              onChange={(e) => setCoFacilitatorGroup(e.target.value)}
+              placeholder="e.g. 5 (leave blank if none)"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+            />
+            {coFacilitatorGroup.trim() && (
+              <p className="text-blue-400 text-xs mt-2">
+                ℹ Group {coFacilitatorGroup.trim()} will be the co-facilitator pool — excluded from auto-allocation, manually deployed after.
+              </p>
+            )}
+          </div>
+
           {/* ── Character toggles ── */}
           <div className="border-t border-gray-700 pt-4">
             <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-1">Active characters</p>
@@ -388,65 +428,140 @@ export default function AdminPage({
         )}
 
         {session.status === 'allocated' && groupNames.length === 0 && (() => {
-          // Detect if facilitator groups are in use
-          const fGroups = [...new Set(
+          const cfg = session.coFacilitatorGroup?.trim();
+          const allFGroups = [...new Set(
             submissions.map((s) => s.facilitatorGroup?.trim()).filter(Boolean) as string[]
           )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-          if (fGroups.length > 0) {
-            // Facilitator-group mode: grid of facilitator groups × characters
+          // Regular groups = all groups except the co-facilitator pool
+          const regularGroups = allFGroups.filter((g) => g !== cfg);
+          const coFacSubs = cfg ? submissions.filter((s) => s.facilitatorGroup?.trim() === cfg) : [];
+
+          if (regularGroups.length > 0) {
             return (
-              <div className="mb-8 overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="bg-gray-700 px-3 py-2 text-left text-gray-400 whitespace-nowrap">Character</th>
-                      {fGroups.map((g) => (
-                        <th key={g} className="bg-gray-700 px-3 py-2 text-center text-gray-200 font-bold whitespace-nowrap">
-                          Group {g}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ARCHETYPE_KEYS.map((k) => {
-                      const a = ARCHETYPES[k];
-                      return (
-                        <tr key={k} className="border-t border-gray-700">
-                          <td className="bg-gray-800 px-3 py-2 whitespace-nowrap">
-                            <span className="mr-1">{a.emoji}</span>
-                            <span className="font-medium text-gray-300">{a.character}</span>
-                          </td>
-                          {fGroups.map((g) => {
-                            const people = submissions.filter(
-                              (s) => s.facilitatorGroup?.trim() === g && s.allocatedCharacter === k
-                            );
-                            return (
-                              <td key={g} className="bg-gray-800 px-3 py-2 text-center border-l border-gray-700 align-top">
-                                {people.length === 0 ? (
-                                  <span className="text-gray-600">—</span>
-                                ) : (
-                                  <div className="flex flex-col gap-0.5">
-                                    {people.map((p) => (
-                                      <div key={p.id} className="bg-gray-700 rounded px-2 py-0.5 text-gray-200 whitespace-nowrap">
-                                        {p.name}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                {/* ── Breakdown grid: characters × regular groups ── */}
+                <div className="mb-6 overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="bg-gray-700 px-3 py-2 text-left text-gray-400 whitespace-nowrap">Character</th>
+                        {regularGroups.map((g) => (
+                          <th key={g} className="bg-gray-700 px-3 py-2 text-center text-gray-200 font-bold whitespace-nowrap">
+                            Group {g}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ARCHETYPE_KEYS.map((k) => {
+                        const a = ARCHETYPES[k];
+                        return (
+                          <tr key={k} className="border-t border-gray-700">
+                            <td className="bg-gray-800 px-3 py-2 whitespace-nowrap">
+                              <span className="mr-1">{a.emoji}</span>
+                              <span className="font-medium text-gray-300">{a.character}</span>
+                            </td>
+                            {regularGroups.map((g) => {
+                              // Include regular members + any co-fac deployed here
+                              const people = submissions.filter(
+                                (s) => s.allocatedCharacter === k &&
+                                  (s.facilitatorGroup?.trim() === g || s.deployedToGroup?.trim() === g)
+                              );
+                              return (
+                                <td key={g} className="bg-gray-800 px-3 py-2 text-center border-l border-gray-700 align-top">
+                                  {people.length === 0 ? (
+                                    <span className="text-gray-600">—</span>
+                                  ) : (
+                                    <div className="flex flex-col gap-0.5">
+                                      {people.map((p) => (
+                                        <div
+                                          key={p.id}
+                                          className={`rounded px-2 py-0.5 whitespace-nowrap text-gray-200 ${p.deployedToGroup ? 'bg-indigo-700' : 'bg-gray-700'}`}
+                                          title={p.deployedToGroup ? `Co-facilitator from Group ${p.facilitatorGroup}` : undefined}
+                                        >
+                                          {p.name}{p.deployedToGroup ? ' ★' : ''}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {cfg && <p className="text-gray-500 text-xs mt-1">★ = co-facilitator deployed from Group {cfg}</p>}
+                </div>
+
+                {/* ── Co-facilitator deployment panel ── */}
+                {coFacSubs.length > 0 && (
+                  <div className="bg-indigo-950 border border-indigo-700 rounded-2xl p-5 mb-8">
+                    <h2 className="text-sm font-bold text-indigo-300 mb-1">
+                      Co-facilitator Deployment — Group {cfg}
+                    </h2>
+                    <p className="text-indigo-400 text-xs mb-4">
+                      Assign each co-facilitator a character and deploy them into a group to fill missing slots.
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      {coFacSubs.map((s) => {
+                        const nat = ARCHETYPES[s.archetype];
+                        const isDeployed = !!s.deployedToGroup;
+                        return (
+                          <div key={s.id} className="bg-indigo-900 rounded-xl p-3 flex flex-wrap items-center gap-3">
+                            <div className="flex-1 min-w-[120px]">
+                              <p className="font-bold text-white text-sm">{s.name}</p>
+                              <p className="text-indigo-400 text-xs">Natural: {nat.emoji} {nat.character}</p>
+                              {isDeployed && (
+                                <p className="text-green-400 text-xs mt-0.5">
+                                  ✅ Deployed as {ARCHETYPES[s.allocatedCharacter!].character} → Group {s.deployedToGroup}
+                                </p>
+                              )}
+                            </div>
+                            <select
+                              value={pendingCharacter[s.id] ?? (s.allocatedCharacter ?? '')}
+                              onChange={(e) => setPendingCharacter((p) => ({ ...p, [s.id]: e.target.value as ArchetypeKey }))}
+                              className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500"
+                            >
+                              <option value="">Character…</option>
+                              {ARCHETYPE_KEYS.map((k) => (
+                                <option key={k} value={k}>{ARCHETYPES[k].emoji} {ARCHETYPES[k].character}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={pendingTarget[s.id] ?? (s.deployedToGroup ?? '')}
+                              onChange={(e) => setPendingTarget((p) => ({ ...p, [s.id]: e.target.value }))}
+                              className="bg-gray-800 border border-gray-600 text-white text-sm rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500"
+                            >
+                              <option value="">Group…</option>
+                              {regularGroups.map((g) => (
+                                <option key={g} value={g}>Group {g}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => handleDeploy(s.id)}
+                              disabled={
+                                deploying[s.id] ||
+                                !(pendingCharacter[s.id] ?? s.allocatedCharacter) ||
+                                !(pendingTarget[s.id] ?? s.deployedToGroup)
+                              }
+                              className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-4 py-1.5 rounded-lg transition-colors"
+                            >
+                              {deploying[s.id] ? '⏳' : isDeployed ? 'Update' : 'Deploy →'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
             );
           }
 
-          // Pure character mode: existing per-character columns
+          // Pure character mode (no facilitator groups): existing per-character columns
           return (
             <div className="grid grid-cols-5 gap-3 mb-8">
               {ARCHETYPE_KEYS.map((k) => {

@@ -3,18 +3,20 @@ import { ArchetypeKey, ARCHETYPE_KEYS } from './archetypes';
 export interface Submission {
   id: string;
   name: string;
-  facilitatorGroup?: string; // self-reported group (e.g. "4")
+  facilitatorGroup?: string;  // self-reported group (e.g. "4")
   archetype: ArchetypeKey;
   scores: Record<ArchetypeKey, number>;
   allocatedCharacter?: ArchetypeKey;
   allocatedGroup?: string;
+  deployedToGroup?: string;   // set when admin deploys a co-facilitator into a target group
   submittedAt: string;
 }
 
 export interface SessionState {
   status: 'open' | 'allocated';
   allocatedAt?: string;
-  groups?: string[]; // defined when group mode is used
+  groups?: string[];           // defined when named-group mode is used
+  coFacilitatorGroup?: string; // which facilitator group number is the co-facilitator pool
 }
 
 // ── In-memory fallback (development / when KV is not configured) ──────────────

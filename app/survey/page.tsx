@@ -50,7 +50,7 @@ export default function SurveyPage() {
   }
 
   if (step === 'name') {
-    const canStart = name.trim().length >= 2;
+    const canStart = name.trim().length >= 2 && facilitatorGroup.trim().length >= 1;
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-yellow-50 to-orange-50 px-4">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8">
@@ -78,7 +78,7 @@ export default function SurveyPage() {
           />
 
           <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">
-            Your group number <span className="text-gray-400 font-normal">(optional)</span>
+            Your group number
           </label>
           <input
             type="text"
