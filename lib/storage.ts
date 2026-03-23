@@ -40,7 +40,7 @@ async function getKV() {
 export async function saveSubmission(submission: Submission): Promise<void> {
   if (isKVAvailable()) {
     const kv = await getKV();
-    await kv.hset('submissions', { [submission.id]: JSON.stringify(submission) });
+    await kv.hset('submissions', { [submission.id]: submission });
   } else {
     memStore.submissions[submission.id] = submission;
   }
@@ -49,8 +49,7 @@ export async function saveSubmission(submission: Submission): Promise<void> {
 export async function getSubmission(id: string): Promise<Submission | null> {
   if (isKVAvailable()) {
     const kv = await getKV();
-    const raw = await kv.hget<string>('submissions', id);
-    return raw ? JSON.parse(raw) : null;
+    return await kv.hget<Submission>('submissions', id) ?? null;
   }
   return memStore.submissions[id] ?? null;
 }
@@ -58,9 +57,9 @@ export async function getSubmission(id: string): Promise<Submission | null> {
 export async function getAllSubmissions(): Promise<Submission[]> {
   if (isKVAvailable()) {
     const kv = await getKV();
-    const all = await kv.hgetall<Record<string, string>>('submissions');
+    const all = await kv.hgetall<Record<string, Submission>>('submissions');
     if (!all) return [];
-    return Object.values(all).map((v) => JSON.parse(v));
+    return Object.values(all);
   }
   return Object.values(memStore.submissions);
 }
@@ -71,7 +70,7 @@ export async function updateSubmission(id: string, patch: Partial<Submission>): 
   const updated = { ...existing, ...patch };
   if (isKVAvailable()) {
     const kv = await getKV();
-    await kv.hset('submissions', { [id]: JSON.stringify(updated) });
+    await kv.hset('submissions', { [id]: updated });
   } else {
     memStore.submissions[id] = updated;
   }
@@ -82,8 +81,7 @@ export async function updateSubmission(id: string, patch: Partial<Submission>): 
 export async function getSession(): Promise<SessionState> {
   if (isKVAvailable()) {
     const kv = await getKV();
-    const raw = await kv.get<string>('session');
-    return raw ? JSON.parse(raw) : { status: 'open' };
+    return await kv.get<SessionState>('session') ?? { status: 'open' };
   }
   return memStore.session;
 }
@@ -91,7 +89,7 @@ export async function getSession(): Promise<SessionState> {
 export async function setSession(state: SessionState): Promise<void> {
   if (isKVAvailable()) {
     const kv = await getKV();
-    await kv.set('session', JSON.stringify(state));
+    await kv.set('session', state);
   } else {
     memStore.session = state;
   }
