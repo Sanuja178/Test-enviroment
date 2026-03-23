@@ -166,19 +166,26 @@ export default function ResultPage({
               </div>
             </div>
           ) : (
-            // Character mode: show character group as before
+            // Character mode: show character group (with optional facilitator group label)
             <div className={`rounded-3xl border-2 p-8 shadow-xl ${allocated.bgColor}`}>
               <div className="text-center">
+                {submission.facilitatorGroup && (
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
+                    Group {submission.facilitatorGroup}
+                  </p>
+                )}
                 <p className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                  Your Workshop Group
+                  Your Workshop Character
                 </p>
                 <div className="text-6xl mb-2">{allocated.emoji}</div>
                 <h2 className={`text-2xl font-extrabold ${allocated.color}`}>
-                  {allocated.character} Group
+                  {allocated.character}
                 </h2>
                 <p className="text-gray-600 mt-2 font-medium">{allocated.archetype}</p>
                 <p className="text-gray-500 text-sm mt-2">
-                  Find the others in your group — you&apos;ll be working together in the next activity!
+                  {submission.facilitatorGroup
+                    ? `Find the other ${allocated.character}s in Group ${submission.facilitatorGroup} — you'll be working together!`
+                    : `Find the others in your group — you'll be working together in the next activity!`}
                 </p>
               </div>
             </div>

@@ -8,6 +8,7 @@ import { ArchetypeKey } from '@/lib/archetypes';
 export default function SurveyPage() {
   const router = useRouter();
   const [name, setName] = useState('');
+  const [facilitatorGroup, setFacilitatorGroup] = useState('');
   const [step, setStep] = useState<'name' | 'questions'>('name');
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState<ArchetypeKey[]>([]);
@@ -34,7 +35,7 @@ export default function SurveyPage() {
           const res = await fetch('/api/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, answers: newAnswers }),
+            body: JSON.stringify({ name, facilitatorGroup: facilitatorGroup.trim() || undefined, answers: newAnswers }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
@@ -49,6 +50,7 @@ export default function SurveyPage() {
   }
 
   if (step === 'name') {
+    const canStart = name.trim().length >= 2;
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-yellow-50 to-orange-50 px-4">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8">
@@ -57,23 +59,42 @@ export default function SurveyPage() {
             Welcome to the Survey
           </h1>
           <p className="text-gray-500 text-center mb-6">
-            What should we call you?
+            Tell us a little about yourself to get started.
           </p>
+
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            Your name or nickname
+          </label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && name.trim().length >= 2) setStep('questions');
+              if (e.key === 'Enter' && canStart) setStep('questions');
             }}
-            placeholder="Your name or nickname"
+            placeholder="e.g. Sanuja"
             className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-lg focus:outline-none focus:border-orange-400"
             autoFocus
           />
+
+          <label className="block text-sm font-semibold text-gray-700 mt-4 mb-1">
+            Your group number <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={facilitatorGroup}
+            onChange={(e) => setFacilitatorGroup(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canStart) setStep('questions');
+            }}
+            placeholder="e.g. 4"
+            className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-lg focus:outline-none focus:border-orange-400"
+          />
+
           <button
             onClick={() => setStep('questions')}
-            disabled={name.trim().length < 2}
-            className="mt-4 w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-lg py-3 rounded-xl transition-colors"
+            disabled={!canStart}
+            className="mt-5 w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-lg py-3 rounded-xl transition-colors"
           >
             Start →
           </button>

@@ -387,36 +387,96 @@ export default function AdminPage({
           </div>
         )}
 
-        {session.status === 'allocated' && groupNames.length === 0 && (
-          // Character mode: existing per-character columns
-          <div className="grid grid-cols-5 gap-3 mb-8">
-            {ARCHETYPE_KEYS.map((k) => {
-              const a = ARCHETYPES[k];
-              const allocated = submissions.filter((s) => s.allocatedCharacter === k);
-              return (
-                <div key={k} className="bg-gray-800 rounded-2xl p-3">
-                  <div className="text-center mb-2">
-                    <div className="text-2xl">{a.emoji}</div>
-                    <div className="text-xs font-bold text-gray-300">{a.character}</div>
-                    <div className="text-xs text-gray-500">{allocated.length} person{allocated.length !== 1 ? 's' : ''}</div>
+        {session.status === 'allocated' && groupNames.length === 0 && (() => {
+          // Detect if facilitator groups are in use
+          const fGroups = [...new Set(
+            submissions.map((s) => s.facilitatorGroup?.trim()).filter(Boolean) as string[]
+          )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+          if (fGroups.length > 0) {
+            // Facilitator-group mode: grid of facilitator groups × characters
+            return (
+              <div className="mb-8 overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="bg-gray-700 px-3 py-2 text-left text-gray-400 whitespace-nowrap">Character</th>
+                      {fGroups.map((g) => (
+                        <th key={g} className="bg-gray-700 px-3 py-2 text-center text-gray-200 font-bold whitespace-nowrap">
+                          Group {g}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ARCHETYPE_KEYS.map((k) => {
+                      const a = ARCHETYPES[k];
+                      return (
+                        <tr key={k} className="border-t border-gray-700">
+                          <td className="bg-gray-800 px-3 py-2 whitespace-nowrap">
+                            <span className="mr-1">{a.emoji}</span>
+                            <span className="font-medium text-gray-300">{a.character}</span>
+                          </td>
+                          {fGroups.map((g) => {
+                            const people = submissions.filter(
+                              (s) => s.facilitatorGroup?.trim() === g && s.allocatedCharacter === k
+                            );
+                            return (
+                              <td key={g} className="bg-gray-800 px-3 py-2 text-center border-l border-gray-700 align-top">
+                                {people.length === 0 ? (
+                                  <span className="text-gray-600">—</span>
+                                ) : (
+                                  <div className="flex flex-col gap-0.5">
+                                    {people.map((p) => (
+                                      <div key={p.id} className="bg-gray-700 rounded px-2 py-0.5 text-gray-200 whitespace-nowrap">
+                                        {p.name}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
+
+          // Pure character mode: existing per-character columns
+          return (
+            <div className="grid grid-cols-5 gap-3 mb-8">
+              {ARCHETYPE_KEYS.map((k) => {
+                const a = ARCHETYPES[k];
+                const allocated = submissions.filter((s) => s.allocatedCharacter === k);
+                return (
+                  <div key={k} className="bg-gray-800 rounded-2xl p-3">
+                    <div className="text-center mb-2">
+                      <div className="text-2xl">{a.emoji}</div>
+                      <div className="text-xs font-bold text-gray-300">{a.character}</div>
+                      <div className="text-xs text-gray-500">{allocated.length} person{allocated.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {allocated.map((s) => (
+                        <div key={s.id} className="text-xs bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
+                          <span>{s.name}</span>
+                          {s.allocatedCharacter !== s.archetype && (
+                            <span className="text-gray-500 text-xs">
+                              (was {ARCHETYPES[s.archetype].character})
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    {allocated.map((s) => (
-                      <div key={s.id} className="text-xs bg-gray-700 rounded px-2 py-1 flex items-center gap-1">
-                        <span>{s.name}</span>
-                        {s.allocatedCharacter !== s.archetype && (
-                          <span className="text-gray-500 text-xs">
-                            (was {ARCHETYPES[s.archetype].character})
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Danger zone */}
         <div className="bg-gray-800 border border-red-900 rounded-2xl p-6 mb-6">
@@ -450,9 +510,12 @@ export default function AdminPage({
               <thead>
                 <tr className="text-gray-500 text-xs uppercase border-b border-gray-700">
                   <th className="px-5 py-3 text-left">Name</th>
+                  {submissions.some((s) => s.facilitatorGroup) && (
+                    <th className="px-5 py-3 text-left">Group</th>
+                  )}
                   <th className="px-5 py-3 text-left">Natural Archetype</th>
                   {session.status === 'allocated' && (
-                    <th className="px-5 py-3 text-left">Assigned Group</th>
+                    <th className="px-5 py-3 text-left">Assigned Character</th>
                   )}
                   <th className="px-5 py-3 text-left">Submitted</th>
                 </tr>
@@ -473,6 +536,15 @@ export default function AdminPage({
                       return (
                         <tr key={s.id} className="border-b border-gray-700 hover:bg-gray-750">
                           <td className="px-5 py-3 font-medium">{s.name}</td>
+                          {submissions.some((sub) => sub.facilitatorGroup) && (
+                            <td className="px-5 py-3 text-gray-400">
+                              {s.facilitatorGroup ? (
+                                <span className="bg-gray-700 rounded px-2 py-0.5 text-xs font-mono">
+                                  {s.facilitatorGroup}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          )}
                           <td className="px-5 py-3">
                             <span className="flex items-center gap-2">
                               {a.emoji} {a.character}

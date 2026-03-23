@@ -7,7 +7,11 @@ import { ArchetypeKey } from '@/lib/archetypes';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, answers } = body as { name: string; answers: ArchetypeKey[] };
+    const { name, facilitatorGroup, answers } = body as {
+      name: string;
+      facilitatorGroup?: string;
+      answers: ArchetypeKey[];
+    };
 
     if (!name || !answers || answers.length !== 10) {
       return NextResponse.json({ error: 'Invalid submission' }, { status: 400 });
@@ -19,6 +23,7 @@ export async function POST(req: NextRequest) {
     await saveSubmission({
       id,
       name: name.trim(),
+      facilitatorGroup: facilitatorGroup?.trim() || undefined,
       archetype,
       scores,
       submittedAt: new Date().toISOString(),

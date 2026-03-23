@@ -4,6 +4,7 @@ import {
   setSession,
   updateSubmission,
   computeEvenAllocation,
+  computeAllocationsPerGroup,
   computeGroupAllocation,
 } from '@/lib/storage';
 import { ArchetypeKey, ARCHETYPE_KEYS } from '@/lib/archetypes';
@@ -24,9 +25,25 @@ export async function POST(req: NextRequest) {
     : [];
 
   const submissions = await getAllSubmissions();
+  const hasFacilitatorGroups = submissions.some((s) => s.facilitatorGroup?.trim());
+
+  if (hasFacilitatorGroups) {
+    // Facilitator-group mode: even character split independently per group
+    const allocation = computeAllocationsPerGroup(submissions, disabled);
+    await Promise.all(
+      submissions.map((s) =>
+        updateSubmission(s.id, {
+          allocatedCharacter: allocation[s.id],
+          allocatedGroup: undefined,
+        })
+      )
+    );
+    await setSession({ status: 'allocated', allocatedAt: new Date().toISOString() });
+    return NextResponse.json({ success: true, mode: 'facilitator-groups' });
+  }
 
   if (groups.length > 0) {
-    // Group mode: distribute into named groups with 1 of each character per group
+    // Named-group mode: distribute into admin-defined mixed-character teams
     const groupAlloc = computeGroupAllocation(submissions, groups, disabled);
     await Promise.all(
       submissions.map((s) => {
@@ -37,15 +54,11 @@ export async function POST(req: NextRequest) {
         });
       })
     );
-    await setSession({
-      status: 'allocated',
-      allocatedAt: new Date().toISOString(),
-      groups,
-    });
-    return NextResponse.json({ success: true, mode: 'groups', groups });
+    await setSession({ status: 'allocated', allocatedAt: new Date().toISOString(), groups });
+    return NextResponse.json({ success: true, mode: 'named-groups', groups });
   }
 
-  // Character mode: even split across character buckets (existing behaviour)
+  // Character mode: even split across character buckets (default)
   const allocation = computeEvenAllocation(submissions, disabled);
   await Promise.all(
     submissions.map((s) =>
@@ -55,9 +68,6 @@ export async function POST(req: NextRequest) {
       })
     )
   );
-  await setSession({
-    status: 'allocated',
-    allocatedAt: new Date().toISOString(),
-  });
-  return NextResponse.json({ success: true, mode: 'characters', allocation });
+  await setSession({ status: 'allocated', allocatedAt: new Date().toISOString() });
+  return NextResponse.json({ success: true, mode: 'characters' });
 }

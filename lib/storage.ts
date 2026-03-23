@@ -3,6 +3,7 @@ import { ArchetypeKey, ARCHETYPE_KEYS } from './archetypes';
 export interface Submission {
   id: string;
   name: string;
+  facilitatorGroup?: string; // self-reported group (e.g. "4")
   archetype: ArchetypeKey;
   scores: Record<ArchetypeKey, number>;
   allocatedCharacter?: ArchetypeKey;
@@ -169,6 +170,28 @@ export function computeEvenAllocation(
   }
 
   return allocation;
+}
+
+/**
+ * Run computeEvenAllocation independently for each self-reported facilitator
+ * group so that every group gets its own balanced character split.
+ * Submissions without a facilitatorGroup are pooled together.
+ */
+export function computeAllocationsPerGroup(
+  submissions: Submission[],
+  disabled: ArchetypeKey[] = []
+): Record<string, ArchetypeKey> {
+  const byGroup: Record<string, Submission[]> = {};
+  for (const sub of submissions) {
+    const key = sub.facilitatorGroup?.trim() || '__ungrouped__';
+    if (!byGroup[key]) byGroup[key] = [];
+    byGroup[key].push(sub);
+  }
+  const result: Record<string, ArchetypeKey> = {};
+  for (const subs of Object.values(byGroup)) {
+    Object.assign(result, computeEvenAllocation(subs, disabled));
+  }
+  return result;
 }
 
 /**
