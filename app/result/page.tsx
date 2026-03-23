@@ -141,21 +141,48 @@ export default function ResultPage({
 
         {/* Workshop allocation (shown after admin presses "next step") */}
         {session.status === 'allocated' && allocated ? (
-          <div className={`rounded-3xl border-2 p-8 shadow-xl ${allocated.bgColor}`}>
-            <div className="text-center">
-              <p className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2">
-                Your Workshop Group
-              </p>
-              <div className="text-6xl mb-2">{allocated.emoji}</div>
-              <h2 className={`text-2xl font-extrabold ${allocated.color}`}>
-                {allocated.character} Group
-              </h2>
-              <p className="text-gray-600 mt-2 font-medium">{allocated.archetype}</p>
-              <p className="text-gray-500 text-sm mt-2">
-                Find the others in your group — you&apos;ll be working together in the next activity!
-              </p>
+          submission.allocatedGroup ? (
+            // Group mode: show team name prominently, character as role
+            <div className="rounded-3xl border-2 border-indigo-300 bg-indigo-50 p-8 shadow-xl">
+              <div className="text-center">
+                <p className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Your Workshop Group
+                </p>
+                <div className="text-5xl mb-3">🏷️</div>
+                <h2 className="text-3xl font-extrabold text-indigo-700">
+                  {submission.allocatedGroup}
+                </h2>
+                <div className="mt-4 flex items-center justify-center gap-3 bg-white bg-opacity-70 rounded-2xl p-4">
+                  <span className="text-3xl">{allocated.emoji}</span>
+                  <div className="text-left">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Your role in this team</p>
+                    <p className={`text-lg font-extrabold ${allocated.color}`}>{allocated.character}</p>
+                    <p className="text-sm text-gray-500">{allocated.archetype}</p>
+                  </div>
+                </div>
+                <p className="text-gray-500 text-sm mt-4">
+                  Find your <strong className="text-indigo-600">{submission.allocatedGroup}</strong> team — you&apos;ll be working together in the next activity!
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            // Character mode: show character group as before
+            <div className={`rounded-3xl border-2 p-8 shadow-xl ${allocated.bgColor}`}>
+              <div className="text-center">
+                <p className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Your Workshop Group
+                </p>
+                <div className="text-6xl mb-2">{allocated.emoji}</div>
+                <h2 className={`text-2xl font-extrabold ${allocated.color}`}>
+                  {allocated.character} Group
+                </h2>
+                <p className="text-gray-600 mt-2 font-medium">{allocated.archetype}</p>
+                <p className="text-gray-500 text-sm mt-2">
+                  Find the others in your group — you&apos;ll be working together in the next activity!
+                </p>
+              </div>
+            </div>
+          )
         ) : (
           <div className="bg-white rounded-2xl shadow p-6 text-center">
             <div className="text-3xl mb-3">⏳</div>

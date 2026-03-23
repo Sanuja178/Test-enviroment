@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { use, useEffect, useRef, useState, useCallback } from 'react';
 import { ARCHETYPES, ARCHETYPE_KEYS, ArchetypeKey } from '@/lib/archetypes';
 import type { Submission, SessionState } from '@/lib/storage';
 
@@ -26,11 +26,25 @@ export default function AdminPage({
   const [clearing, setClearing] = useState(false);
   const [clearMsg, setClearMsg] = useState('');
   const [disabledKeys, setDisabledKeys] = useState<ArchetypeKey[]>([]);
+  const [groupNames, setGroupNames] = useState<string[]>([]);
+  const [groupInput, setGroupInput] = useState('');
+  const hasLoadedOnce = useRef(false);
 
   function toggleDisabled(k: ArchetypeKey) {
     setDisabledKeys((prev) =>
       prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]
     );
+  }
+
+  function addGroup() {
+    const name = groupInput.trim();
+    if (!name || groupNames.includes(name)) return;
+    setGroupNames((prev) => [...prev, name]);
+    setGroupInput('');
+  }
+
+  function removeGroup(i: number) {
+    setGroupNames((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   const load = useCallback(async (k: string) => {
@@ -43,6 +57,11 @@ export default function AdminPage({
     }
     const json: ResponsesData = await res.json();
     setData(json);
+    // Restore group names from session on first load only
+    if (!hasLoadedOnce.current && json.session.groups?.length) {
+      setGroupNames(json.session.groups);
+    }
+    hasLoadedOnce.current = true;
   }, []);
 
   useEffect(() => {
@@ -57,16 +76,17 @@ export default function AdminPage({
   }, [key, load]);
 
   async function handleAllocate(reallocate = false) {
+    const mode = groupNames.length > 0 ? 'mixed-character teams' : 'character groups';
     const msg = reallocate
-      ? 'This will reassign all groups from scratch. Participants will see the new allocation. Continue?'
-      : 'This will assign everyone to a workshop group with an even split. Continue?';
+      ? `This will reassign all ${mode} from scratch. Participants will see the new allocation. Continue?`
+      : `This will assign everyone to ${mode}. Continue?`;
     if (!confirm(msg)) return;
     setAllocating(true);
     setAllocateMsg('');
     const res = await fetch('/api/allocate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, disabled: disabledKeys }),
+      body: JSON.stringify({ key, disabled: disabledKeys, groups: groupNames }),
     });
     const json = await res.json();
     setAllocating(false);
@@ -178,39 +198,92 @@ export default function AdminPage({
           })}
         </div>
 
-        {/* What happens after allocation */}
-        {/* Character group toggles — shared between allocate & reallocate */}
+        {/* Group split settings — shared between allocate & reallocate */}
         <div className="bg-gray-800 rounded-2xl p-5 mb-6 border border-gray-700">
           <h2 className="text-sm font-bold text-gray-300 mb-1">Group split settings</h2>
-          <p className="text-gray-500 text-xs mb-3">
-            Disable a character to exclude them from the auto-split. Disabled groups stay empty so you can fill them manually.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {ARCHETYPE_KEYS.map((k) => {
-              const a = ARCHETYPES[k];
-              const off = disabledKeys.includes(k);
-              return (
-                <button
-                  key={k}
-                  onClick={() => toggleDisabled(k)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
-                    off
-                      ? 'bg-gray-700 border-gray-600 text-gray-500 line-through'
-                      : 'bg-gray-900 border-orange-500 text-white'
-                  }`}
-                >
-                  <span>{a.emoji}</span>
-                  <span>{a.character}</span>
-                  {off ? <span className="text-xs text-gray-600">off</span> : <span className="text-xs text-green-400">on</span>}
-                </button>
-              );
-            })}
-          </div>
-          {disabledKeys.length > 0 && (
-            <p className="text-yellow-400 text-xs mt-3">
-              ⚠ {disabledKeys.length} character{disabledKeys.length > 1 ? 's' : ''} disabled — everyone will be split across the remaining {ARCHETYPE_KEYS.length - disabledKeys.length} group{ARCHETYPE_KEYS.length - disabledKeys.length !== 1 ? 's' : ''}.
+
+          {/* ── Workshop groups ── */}
+          <div className="mb-4">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-1 mt-2">Workshop groups</p>
+            <p className="text-gray-500 text-xs mb-3">
+              Add named groups to create mixed-character teams (1–2 of each type per group).
+              Leave empty to split by character type instead.
             </p>
-          )}
+            <div className="flex gap-2 mb-2">
+              <input
+                value={groupInput}
+                onChange={(e) => setGroupInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') addGroup(); }}
+                placeholder="Group name…"
+                className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+              />
+              <button
+                onClick={addGroup}
+                disabled={!groupInput.trim() || groupNames.includes(groupInput.trim())}
+                className="bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+              >
+                + Add
+              </button>
+            </div>
+            {groupNames.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {groupNames.map((g, i) => (
+                  <div key={i} className="flex items-center gap-1.5 bg-gray-700 border border-orange-500 rounded-lg px-3 py-1.5 text-sm text-white">
+                    <span>{g}</span>
+                    <button
+                      onClick={() => removeGroup(i)}
+                      className="text-gray-500 hover:text-red-400 leading-none ml-1"
+                      aria-label={`Remove ${g}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {groupNames.length > 0 && total > 0 && (
+              <p className="text-blue-400 text-xs mt-2">
+                ℹ {groupNames.length} group{groupNames.length !== 1 ? 's' : ''} — each will have ~{Math.ceil(total / groupNames.length)} people with a mix of {ARCHETYPE_KEYS.length - disabledKeys.length} character type{ARCHETYPE_KEYS.length - disabledKeys.length !== 1 ? 's' : ''}.
+              </p>
+            )}
+            {groupNames.length === 0 && (
+              <p className="text-gray-600 text-xs mt-1">No groups defined — will split by character type.</p>
+            )}
+          </div>
+
+          {/* ── Character toggles ── */}
+          <div className="border-t border-gray-700 pt-4">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-1">Active characters</p>
+            <p className="text-gray-500 text-xs mb-3">
+              Disable a character to exclude them from the split. Disabled groups stay empty for manual assignment.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {ARCHETYPE_KEYS.map((k) => {
+                const a = ARCHETYPES[k];
+                const off = disabledKeys.includes(k);
+                return (
+                  <button
+                    key={k}
+                    onClick={() => toggleDisabled(k)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
+                      off
+                        ? 'bg-gray-700 border-gray-600 text-gray-500 line-through'
+                        : 'bg-gray-900 border-orange-500 text-white'
+                    }`}
+                  >
+                    <span>{a.emoji}</span>
+                    <span>{a.character}</span>
+                    {off ? <span className="text-xs text-gray-600">off</span> : <span className="text-xs text-green-400">on</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {disabledKeys.length > 0 && (
+              <p className="text-yellow-400 text-xs mt-3">
+                ⚠ {disabledKeys.length} character{disabledKeys.length > 1 ? 's' : ''} disabled — everyone will be split across the remaining {ARCHETYPE_KEYS.length - disabledKeys.length}.
+              </p>
+            )}
+          </div>
         </div>
 
         {session.status === 'open' && (
@@ -265,7 +338,57 @@ export default function AdminPage({
         )}
 
         {/* Allocation breakdown if done */}
-        {session.status === 'allocated' && (
+        {session.status === 'allocated' && groupNames.length > 0 && (
+          // Group mode: grid of groups × characters
+          <div className="mb-8 overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr>
+                  <th className="bg-gray-700 px-3 py-2 text-left text-gray-400 rounded-tl-lg whitespace-nowrap">Character</th>
+                  {groupNames.map((g) => (
+                    <th key={g} className="bg-gray-700 px-3 py-2 text-center text-gray-200 font-bold whitespace-nowrap">{g}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ARCHETYPE_KEYS.map((k) => {
+                  const a = ARCHETYPES[k];
+                  return (
+                    <tr key={k} className="border-t border-gray-700">
+                      <td className="bg-gray-800 px-3 py-2 whitespace-nowrap">
+                        <span className="mr-1">{a.emoji}</span>
+                        <span className="font-medium text-gray-300">{a.character}</span>
+                      </td>
+                      {groupNames.map((g) => {
+                        const people = submissions.filter(
+                          (s) => s.allocatedGroup === g && s.allocatedCharacter === k
+                        );
+                        return (
+                          <td key={g} className="bg-gray-800 px-3 py-2 text-center border-l border-gray-700 align-top">
+                            {people.length === 0 ? (
+                              <span className="text-gray-600">—</span>
+                            ) : (
+                              <div className="flex flex-col gap-0.5">
+                                {people.map((p) => (
+                                  <div key={p.id} className="bg-gray-700 rounded px-2 py-0.5 text-gray-200 whitespace-nowrap">
+                                    {p.name}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {session.status === 'allocated' && groupNames.length === 0 && (
+          // Character mode: existing per-character columns
           <div className="grid grid-cols-5 gap-3 mb-8">
             {ARCHETYPE_KEYS.map((k) => {
               const a = ARCHETYPES[k];

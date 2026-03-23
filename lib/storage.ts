@@ -6,12 +6,14 @@ export interface Submission {
   archetype: ArchetypeKey;
   scores: Record<ArchetypeKey, number>;
   allocatedCharacter?: ArchetypeKey;
+  allocatedGroup?: string;
   submittedAt: string;
 }
 
 export interface SessionState {
   status: 'open' | 'allocated';
   allocatedAt?: string;
+  groups?: string[]; // defined when group mode is used
 }
 
 // ── In-memory fallback (development / when KV is not configured) ──────────────
@@ -167,4 +169,98 @@ export function computeEvenAllocation(
   }
 
   return allocation;
+}
+
+/**
+ * Distribute participants into N named groups so that each group has
+ * roughly 1 of each active character type.
+ * Returns a map of submission id → { group, character }.
+ */
+export function computeGroupAllocation(
+  submissions: Submission[],
+  groupNames: string[],
+  disabled: ArchetypeKey[] = []
+): Record<string, { group: string; character: ArchetypeKey }> {
+  const N = groupNames.length;
+  const P = submissions.length;
+  if (N === 0 || P === 0) return {};
+
+  const activeKeys = ARCHETYPE_KEYS.filter((k) => !disabled.includes(k));
+  const M = activeKeys.length;
+  if (M === 0) return {};
+
+  // Each (group, character) slot gets floor(P / N*M) or +1 people
+  const totalSlots = N * M;
+  const base = Math.floor(P / totalSlots);
+  const extra = P % totalSlots;
+
+  // cap[groupIndex][character] = max people for that slot
+  const cap: number[][] = Array.from({ length: N }, () =>
+    new Array(M).fill(base)
+  );
+  // Distribute the `extra` +1 slots evenly across groups first, then chars
+  for (let i = 0; i < extra; i++) {
+    const g = i % N;
+    const c = Math.floor(i / N) % M;
+    cap[g][c]++;
+  }
+
+  const used: number[][] = Array.from({ length: N }, () => new Array(M).fill(0));
+
+  const result: Record<string, { group: string; character: ArchetypeKey }> = {};
+  const unassigned: Submission[] = [];
+
+  // Round-robin pointer per character so people are spread across groups
+  const ptr: Record<string, number> = {};
+  for (const c of activeKeys) ptr[c] = 0;
+
+  // First pass: assign to natural archetype, round-robin across groups
+  for (const sub of submissions) {
+    const ci = activeKeys.indexOf(sub.archetype);
+    if (ci === -1) { unassigned.push(sub); continue; }
+
+    let assigned = false;
+    for (let attempt = 0; attempt < N; attempt++) {
+      const g = (ptr[sub.archetype] + attempt) % N;
+      if (used[g][ci] < cap[g][ci]) {
+        result[sub.id] = { group: groupNames[g], character: sub.archetype };
+        used[g][ci]++;
+        ptr[sub.archetype] = (g + 1) % N;
+        assigned = true;
+        break;
+      }
+    }
+    if (!assigned) unassigned.push(sub);
+  }
+
+  // Second pass: assign unassigned by best secondary score
+  for (const sub of unassigned) {
+    const ranked = [...activeKeys].sort((a, b) => sub.scores[b] - sub.scores[a]);
+    let assigned = false;
+    outer: for (const c of ranked) {
+      const ci = activeKeys.indexOf(c);
+      for (let g = 0; g < N; g++) {
+        if (used[g][ci] < cap[g][ci]) {
+          result[sub.id] = { group: groupNames[g], character: c };
+          used[g][ci]++;
+          assigned = true;
+          break outer;
+        }
+      }
+    }
+    // Safety fallback: fill into any slot with remaining room
+    if (!assigned) {
+      outer2: for (let g = 0; g < N; g++) {
+        for (let ci = 0; ci < M; ci++) {
+          if (used[g][ci] < cap[g][ci] + 1) {
+            result[sub.id] = { group: groupNames[g], character: activeKeys[ci] };
+            used[g][ci]++;
+            break outer2;
+          }
+        }
+      }
+    }
+  }
+
+  return result;
 }
